@@ -1,0 +1,88 @@
+Esercizio Complesso: Sistema di Analisi Transazioni Finanziarie Multi-Formato
+Contesto Reale
+Sei stato assunto da una fintech che aggrega dati da diverse banche e istituti finanziari. Ogni istituto invia i dati in formati completamente diversi e con logiche di business specifiche.
+Il Problema
+Ricevi transazioni finanziarie da 3 fonti:
+Fonte A - "Northern Bank" (JSON)
+
+
+json
+Plain Text
+{   "txn_id": "NB-2024-001",   "acc": "IT60X0542811101000000123456",   "amt": "-150.50",   "dt": "20241209143022",   "cat": "F&B",   "merchant": {     "id": "M001",     "vat": "IT12345678901"   } }
+
+
+Fonte B - "Southern Credit Union" (XML con namespace)
+
+
+xml
+Plain Text
+<scu:Transaction xmlns:scu="http://scu.bank/2024">   <scu:Header>     <scu:Id>SCU_TX_9876</scu:Id>     <scu:ProcessingDate>2024-12-09T14:30:22Z</scu:ProcessingDate>   </scu:Header>   <scu:Details>     <scu:AccountNumber encrypted="true">QWNjb3VudDEyMw==</scu:AccountNumber>     <scu:Amount currency="EUR" sign="-">150.50</scu:Amount>     <scu:CategoryCode>FOOD_RESTAURANT</scu:CategoryCode>   </scu:Details>   <scu:Counterparty type="MERCHANT">     <scu:TaxId>IT12345678901</scu:TaxId>   </scu:Counterparty> </scu:Transaction> ``` ### Fonte C - "Eastern Bank" (CSV con logica nascosta)```TX_REF|ACCOUNT_MASKED|EURO_CENTS|TIMESTAMP_EPOCH|CAT_NUM|MERCHANT_CODE|FLAGSEB20241209001|****3456|15050|1702132222|17|MCH_X001|D,V,F
+Note sulla Fonte C:
+L'importo è in centesimi (15050 = 150.50€)
+Il segno è nella colonna FLAGS: 'D' = Debit (negativo), 'C' = Credit (positivo)
+CAT_NUM è un codice: 17=Food, 22=Transport, 31=Shopping, 45=Health, 52=Entertainment
+FLAGS contiene: D/C (debit/credit), V (verified), F (foreign), R (recurring)
+Requisiti
+1. Mapping Intelligente
+Le categorie devono essere normalizzate in un tuo sistema interno: FOOD, TRANSPORT, SHOPPING, HEALTH, ENTERTAINMENT, OTHER
+Gli IBAN della Fonte B sono criptati in Base64 e vanno decriptati
+Gli account della Fonte C sono mascherati (****3456) - devi ricostruire l'IBAN completo usando una tabella di lookup che devi simulare
+Le date sono in 3 formati diversi (string compatta, ISO-8601, epoch unix)
+2. Calcoli e Arricchimento
+Per ogni transazione salvata devi calcolare e salvare:
+riskScore (0-100): basato su importo, categoria, se è estera, se è notturna (22:00-06:00)
+monthlyCategory: "YYYY-MM-CATEGORY" per aggregazioni future
+isAnomaly: true se l'importo è > 500€ o se è una transazione estera in categoria HEALTH
+processingMetadata: fonte, timestamp di processing, versione parser
+3. Regole di Business
+Le transazioni in FOOD superiori a 200€ vanno categorizzate come ENTERTAINMENT (probabilmente un evento)
+Le transazioni HEALTH estere vanno sempre flaggate come anomalie
+Se una transazione arriva dopo le 23:00 ma il timestamp è prima delle 06:00 dello stesso giorno, è sospetta (possibile frode)
+4. Gestione Errori Specifica
+Se l'IBAN decriptato non è valido (checksum IBAN), salva comunque ma flagga come needsReview
+Se il merchant VAT/TaxId non è italiano (IT), aggiungi campo crossBorder: true
+Ogni errore di parsing deve essere loggato in una collection separata parsing_errors con tutto il payload originale
+Struttura MongoDB Finale
+
+Devi salvare in una collection financial_transactions con questa struttura:
+
+
+javascript
+Plain Text
+{   _id: ObjectId,   transactionId: String, // id normalizzato   accountIban: String,   amount: Decimal128,   transactionDate: ISODate,   category: String, // normalizzata   merchantInfo: {     taxId: String,     internalCode: String   },   flags: {     isDebit: Boolean,     isVerified: Boolean,     isForeign: Boolean,     isRecurring: Boolean,     needsReview: Boolean,     crossBorder: Boolean   },   computed: {     riskScore: Number,     monthlyCategory: String,     isAnomaly: Boolean,     processingTime: ISODate   },   metadata: {     source: String,     parserVersion: String,     rawDataHash: String // MD5 del payload originale   } } ``` ## Cosa Devi Implementare ### 1. Controller REST``` POST /api/v1/transactions/ingest/northern-bankPOST /api/v1/transactions/ingest/southern-creditPOST /api/v1/transactions/ingest/eastern-bank
+
+
+2. Pattern Strategy + Factory
+Un parser diverso per ogni fonte, istanziato tramite factory in base all'endpoint.
+3. Service Layer con Logica Complessa
+Validazione IBAN
+Calcolo risk score con algoritmo pesato
+Detection anomalie
+Normalizzazione categorie con lookup
+4. MongoDB Repository
+Con indici su: accountIban, transactionDate, category, computed.isAnomaly
+5. Gestione Transazionale
+Se il salvataggio fallisce, devi comunque salvare l'errore nella collection parsing_errors.
+Suggerimenti
+Usa @XmlRootElement e JAXB per il parsing XML
+Usa OpenCSV o parsing manuale per il CSV
+Considera MapStruct per i mapping complessi
+Usa @Transactional di MongoDB per operazioni atomiche
+Crea DTO separati per ogni input format
+Usa @Valid e Bean Validation per validazioni
+Considera pattern Chain of Responsibility per i calcoli in sequenza
+Deliverable
+Progetto Spring Boot completo e funzionante
+Test con almeno 3 casi per ogni endpoint
+README con spiegazione delle scelte architetturali
+Collection Postman con esempi di tutte e 3 le chiamate
+Tempo stimato: 6-8 ore per un junior, 3-4 ore per un mid-level
+@Mapping(source = "details.amount", target = "amount", qualifiedByName = "parseSignedAmount")
+    @Mapping(source = "header.processingDate", target = "transactionDate", qualifiedByName = "parseIsoDate")
+    @Mapping(source = "details.categoryCode", target = "category")
+    @Mapping(source = "counterparty.taxId", target = "merchantInfo.taxId")
+    @Mapping(target = "merchantInfo.internalCode", ignore = true)
+    @Mapping(target = "flags", ignore = true)
+    @Mapping(target = "computed", ignore = true)
+    @Mapping(target = "metadata", ignore = true)
+    FinancialTransaction toEntity(SouthernCreditRequest request);
