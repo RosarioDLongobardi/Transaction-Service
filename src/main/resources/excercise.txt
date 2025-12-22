@@ -18,29 +18,29 @@ xml
 Plain Text
 <scu:Transaction xmlns:scu="http://scu.bank/2024">   <scu:Header>     <scu:Id>SCU_TX_9876</scu:Id>     <scu:ProcessingDate>2024-12-09T14:30:22Z</scu:ProcessingDate>   </scu:Header>   <scu:Details>     <scu:AccountNumber encrypted="true">QWNjb3VudDEyMw==</scu:AccountNumber>     <scu:Amount currency="EUR" sign="-">150.50</scu:Amount>     <scu:CategoryCode>FOOD_RESTAURANT</scu:CategoryCode>   </scu:Details>   <scu:Counterparty type="MERCHANT">     <scu:TaxId>IT12345678901</scu:TaxId>   </scu:Counterparty> </scu:Transaction> ``` ### Fonte C - "Eastern Bank" (CSV con logica nascosta)```TX_REF|ACCOUNT_MASKED|EURO_CENTS|TIMESTAMP_EPOCH|CAT_NUM|MERCHANT_CODE|FLAGSEB20241209001|****3456|15050|1702132222|17|MCH_X001|D,V,F
 Note sulla Fonte C:
-L'importo è in centesimi (15050 = 150.50€)
+X L'importo è in centesimi (15050 = 150.50€)
 Il segno è nella colonna FLAGS: 'D' = Debit (negativo), 'C' = Credit (positivo)
 CAT_NUM è un codice: 17=Food, 22=Transport, 31=Shopping, 45=Health, 52=Entertainment
 FLAGS contiene: D/C (debit/credit), V (verified), F (foreign), R (recurring)
 Requisiti
 1. Mapping Intelligente
-Le categorie devono essere normalizzate in un tuo sistema interno: FOOD, TRANSPORT, SHOPPING, HEALTH, ENTERTAINMENT, OTHER
-Gli IBAN della Fonte B sono criptati in Base64 e vanno decriptati
+X Le categorie devono essere normalizzate in un tuo sistema interno: FOOD, TRANSPORT, SHOPPING, HEALTH, ENTERTAINMENT, OTHER
+X Gli IBAN della Fonte B sono criptati in Base64 e vanno decriptati
 Gli account della Fonte C sono mascherati (****3456) - devi ricostruire l'IBAN completo usando una tabella di lookup che devi simulare
 Le date sono in 3 formati diversi (string compatta, ISO-8601, epoch unix)
 2. Calcoli e Arricchimento
 Per ogni transazione salvata devi calcolare e salvare:
-riskScore (0-100): basato su importo, categoria, se è estera, se è notturna (22:00-06:00)
-monthlyCategory: "YYYY-MM-CATEGORY" per aggregazioni future
-isAnomaly: true se l'importo è > 500€ o se è una transazione estera in categoria HEALTH
-processingMetadata: fonte, timestamp di processing, versione parser
+X riskScore (0-100): basato su importo, categoria, se è estera, se è notturna (22:00-06:00)
+X monthlyCategory: "YYYY-MM-CATEGORY" per aggregazioni future
+X isAnomaly: true se l'importo è > 500€ o se è una transazione estera in categoria HEALTH
+X processingMetadata: fonte, timestamp di processing, versione parser
 3. Regole di Business
-Le transazioni in FOOD superiori a 200€ vanno categorizzate come ENTERTAINMENT (probabilmente un evento)
+X Le transazioni in FOOD superiori a 200€ vanno categorizzate come ENTERTAINMENT (probabilmente un evento)
 Le transazioni HEALTH estere vanno sempre flaggate come anomalie
 Se una transazione arriva dopo le 23:00 ma il timestamp è prima delle 06:00 dello stesso giorno, è sospetta (possibile frode)
 4. Gestione Errori Specifica
 Se l'IBAN decriptato non è valido (checksum IBAN), salva comunque ma flagga come needsReview
-Se il merchant VAT/TaxId non è italiano (IT), aggiungi campo crossBorder: true
+X Se il merchant VAT/TaxId non è italiano (IT), aggiungi campo crossBorder: true
 Ogni errore di parsing deve essere loggato in una collection separata parsing_errors con tutto il payload originale
 Struttura MongoDB Finale
 
